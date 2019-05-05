@@ -57,9 +57,9 @@ var Template = (function()
 //        console.log(tmplList);
     }
     
-    function crFunction(templateStr, incCase, cnt)
+    function crFunction(templateStr, incCase)
     {
-        var func = incCase ? "" : "var PRINT='';", match, code, key, tmp, pos = 0, print, c = cnt||0,
+        var func = incCase ? "" : "var PRINT='';", match, code, key, tmp, pos = 0, print, c = 0,
             regExp = new RegExp(parseElems.r, "g");
         
         while((match = regExp.exec(templateStr)) && c < 100)
@@ -114,10 +114,7 @@ var Template = (function()
             }
             else if(key == "inc")
             {
-                //console.log('"'+crFunction(tmplList[code].t, true, c)+'"'); return;//crFunction(tmplList[code].t, true));
                 func += tmplList[code] ? crFunction(tmplList[code].t, true) : "";
-                
-                //console.log('"'+tmplList[code].t+'\n----\n"'+func+'"\n-----------------------------'); return;
             }
             else if(key.charAt(0) == "/") func += "}";
 
