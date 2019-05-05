@@ -4,6 +4,7 @@
  * @version 1.0
  * @author m13p4
  * @copyright Meliantchenkov Pavel
+ * @license https://github.com/m13p4/template/blob/master/LICENSE
  */
 var Template = (function()
 { 'use strict';
