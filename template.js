@@ -41,7 +41,7 @@ var Template = (function()
     {
         var pos = 0, key = "tmpl", begin, end, beginTag, name, closeTagPos, tmplStr, c = 0;
         
-        while((begin = str.indexOf(parseElems.p + key, pos)) > -1 && c < 100)
+        while((begin = str.indexOf(parseElems.p + key, pos)) > -1 && c < 1e3)
         {
             (end            = str.indexOf(parseElems.s, begin))                      && end > -1 
             && (closeTagPos = str.indexOf(parseElems.cp + key, end))                 && closeTagPos > -1
@@ -62,7 +62,7 @@ var Template = (function()
         var func = incCase ? "" : "var PRINT='';", match, code, key, tmp, pos = 0, print, c = 0,
             regExp = new RegExp(parseElems.r, "g");
         
-        while((match = regExp.exec(templateStr)) && c < 100)
+        while((match = regExp.exec(templateStr)) && c < 1e4)
         {
             print = templateStr.substring(pos, match.index);
             pos   = match.index + match[0].length;
@@ -117,7 +117,8 @@ var Template = (function()
                 func += tmplList[code] ? crFunction(tmplList[code].t, true) : "";
             }
             else if(key.charAt(0) == "/") func += "}";
-
+            
+            c++;
         }
         func += "PRINT+="+JSON.stringify(templateStr.substring(pos))+";";
             
