@@ -18,15 +18,26 @@ var Template = (function()
         cp: "</{", //close prefix
         cs: "}/>", //close suffix
         
-        r: "<\\/?\\s*\\{([\\s\\S]*?)\\}\\s*\\/?>" //search regex
+        r: (/<\/?\s*\{([\s\S]*?)\}\s*\/?>/).source //search regex
     },
-    keywords = [
-        "tmpl", "template",
-        "if", "else",
-        "for",
-        "inc", "include",
-        "js"
-    ],
+    controls = {
+        tmpl:   ["tmpl", "template"],
+        
+        if:     ["if"],
+        else:   ["else"],
+        elseif: ["elseif", "else if"],
+        for:    ["for"],
+        while:  ["while"],
+        imp:    ["imp", "import", "inc", "include", "req", "require"],
+        js:     ["js", "code"]
+    },
+    keywords  = (function()
+                {
+                    var res=[], i;
+                    for(i in controls)
+                        res = res.concat(controls[i]);
+                    return res;
+                })(),
     protectComments = "\n//*/\n",
     tmplList = {},
     _STR_TRIM = String.prototype.trim ? 
@@ -54,8 +65,6 @@ var Template = (function()
             pos = closeTagPos + parseElems.cp.length + key.length + parseElems.s.length;
             c++;
         }
-        
-//        console.log(tmplList);
     }
     
     function crFunction(templateStr, incCase)
@@ -91,10 +100,11 @@ var Template = (function()
             key = key.toLowerCase();
 
             if(key == "") func += "PRINT+="+code+";"+protectComments;
-            else if(key == "js") func += code+protectComments;
-            else if(key == "if") func += "if("+code+protectComments+"){";
-            else if(key == "else") func += "}else{";
-            else if(key == "for")
+            else if(controls.js.indexOf(key) > -1) func += code+protectComments;
+            else if(controls.if.indexOf(key) > -1) func += "if("+code+protectComments+"){";
+            else if(controls.else.indexOf(key) > -1) func += "}else{";
+            else if(controls.elseif.indexOf(key) > -1) func += "}else if("+code+protectComments+"){";
+            else if(controls.for.indexOf(key) > -1)
             {
                 tmp = {i:code.indexOf("=>")};
 
@@ -104,28 +114,23 @@ var Template = (function()
                     tmp.o = code.substring(0, tmp.i);
                     tmp.k = code.substring(tmp.i+2).split(",");
 
-                    func += "for(var $i in "+_STR_TRIM(tmp.o)+protectComments+"){";
-                    if(tmp.k.length == 1)
-                        func += "var "+_STR_TRIM(tmp.k[0])+protectComments+"="+_STR_TRIM(tmp.o)+protectComments+"[$i];";
-                    else
-                        func += "var "+_STR_TRIM(tmp.k[1])+protectComments+"="+_STR_TRIM(tmp.o)+protectComments+"[$i], "+_STR_TRIM(tmp.k[0])+protectComments+"=$i;";
+                    func += "for(var _$i in "+_STR_TRIM(tmp.o)+protectComments+"){";
+                    if(tmp.k.length == 1) func += "var " + _STR_TRIM(tmp.k[0]) + protectComments
+                                                  + "=" + _STR_TRIM(tmp.o) + protectComments + "[_$i];";
+                                          
+                    else                  func += "var " + _STR_TRIM(tmp.k[1]) + protectComments
+                                                  + "=" + _STR_TRIM(tmp.o) + protectComments + "[_$i], "
+                                                  + _STR_TRIM(tmp.k[0]) + protectComments + "=_$i;";
                 }
-
-                //console.log(tmp);
             }
-            else if(key == "inc")
-            {
-                func += tmplList[code] ? crFunction(tmplList[code].t, true) : "";
-            }
+            else if(controls.while.indexOf(key) > -1) func += "while("+code+protectComments+"){";
+            else if(controls.imp.indexOf(key) > -1) func += tmplList[code] ? crFunction(tmplList[code].t, true) : "";
             else if(key.charAt(0) == "/") func += "}";
             
             c++;
         }
-        func += "PRINT+="+JSON.stringify(templateStr.substring(pos))+";";
-            
-        func += incCase ? "" : " return PRINT;";
-        
-        //console.log(func);
+        func += "PRINT+="+JSON.stringify(templateStr.substring(pos))+";"
+                + (incCase ? "" : " return PRINT;");
         
         return func;
     }
@@ -137,6 +142,7 @@ var Template = (function()
             vars = templateName;
             templateName = "";
         }
+        vars = vars||{};
         
         var templateObj = tmplList[templateName||""], params, func;
         
@@ -145,16 +151,16 @@ var Template = (function()
         if(!templateObj.f) 
             templateObj.f = crFunction(templateObj.t);
         
-        params = Object.keys(vars).join(",") + protectComments;
-        func = "return function("+params+"){"+templateObj.f+"}";
+        params = [null].concat(Object.keys(vars));
+        params.push(templateObj.f);
         
-//        console.log(func);
-        return ((new Function(func))()).apply(null, Object.values(vars));
+        return (new (Function.prototype.bind.apply(Function, params)))
+                        .apply(null, Object.values(vars));
     }
-    
     
     _tmpl.addTemplate = function(name, str){ addTemplate(name, str); return _tmpl; };
     _tmpl.readTemplate = function(str){ readTemplateString(str); return _tmpl; };
     _tmpl.parse = function(tName, vars){ return parseTemplate(tName, vars); };
+    _tmpl.render = _tmpl.parse;
     return _tmpl;
 })();
