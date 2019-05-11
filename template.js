@@ -18,7 +18,8 @@ var Template = (function()
         cp: "</{", //close prefix
         cs: "}/>", //close suffix
         
-        r: (/<\/?\s*\{([\s\S]*?)\}\s*\/?>/).source //search regex
+        r: (/<\/?\s*\{([\s\S]*?)\}\s*\/?>/).source, //search regex
+        c: "//*/\n" // protect comment
     },
     controls = {
         tmpl:   ["tmpl", "template"],
@@ -38,25 +39,49 @@ var Template = (function()
                         res = res.concat(controls[i]);
                     return res;
                 })(),
-    protectComments = "\n//*/\n",
     tmplList = {},
-    _STR_TRIM = String.prototype.trim ? 
-        function(s){ return s.trim(); } : 
-        function(s){ return s.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, ''); };
+    _STR_TRIM = new Function("s", "return "+(String.prototype.trim ? "s.trim()" : "s.replace(/^[\\s\\uFEFF\\xA0]+|[\\s\\uFEFF\\xA0]+$/g,'')")+";");
     
     function addTemplate(name, str)
     {
         tmplList[name] = {t:str};
     }
     
+    function indexOf(arrOrStr, toSearch, pos)
+    {
+        pos = pos||0;
+        toSearch = toSearch instanceof Array ? toSearch : [toSearch];
+
+        var fnd, res = -1, i = 0;
+        for(;i < toSearch.length; i++)
+            fnd = arrOrStr.indexOf(toSearch[i], pos),
+            res = (fnd > -1 && (fnd < res || res == -1)) ? fnd : res;
+        
+        return res;
+    }
+    
     function readTemplateString(str)
     {
-        var pos = 0, key = "tmpl", begin, end, beginTag, name, closeTagPos, tmplStr, c = 0;
+        var keys = {
+            o: [],  //open
+            c: []   //close
+        }, tmplCntrl = controls.tmpl, pos = 0, c = 0, 
+        key, begin, end, beginTag, name, closeTagPos, tmplStr;
+        for(var i = 0; i < tmplCntrl.length; i++)
+            keys.o.push(parseElems.p + tmplCntrl[i]),
+            keys.c.push(parseElems.cp + tmplCntrl[i]);
         
-        while((begin = str.indexOf(parseElems.p + key, pos)) > -1 && c < 1e3)
+        while((begin = indexOf(str, keys.o, pos)) > -1 && c < 1e3)
         {
-            (end            = str.indexOf(parseElems.s, begin))                      && end > -1 
-            && (closeTagPos = str.indexOf(parseElems.cp + key, end))                 && closeTagPos > -1
+            key = false;
+            for(i = 0; i < keys.o.length; i++)
+                if(str.substr(begin, keys.o[i].length) === keys.o[i])
+                {
+                    key = tmplCntrl[i];
+                    break;
+                }
+            key && (end     = indexOf(str, parseElems.s, begin))                      && end > -1 
+            && (closeTagPos = indexOf(str, keys.c, end))                              && closeTagPos > -1
             && (beginTag    = str.substring(begin + parseElems.p.length, end))
             && (tmplStr     = str.substring(end + parseElems.s.length, closeTagPos))
             && (name        = _STR_TRIM(beginTag.substr(key.length+1)) || "")
@@ -67,9 +92,15 @@ var Template = (function()
         }
     }
     
+    function isControll(cntrlKey, key)
+    {
+        return indexOf(controls[cntrlKey], key) > -1;
+    }
+    
     function crFunction(templateStr, incCase)
     {
-        var func = incCase ? "" : "var PRINT='';", match, code, key, tmp, pos = 0, print, c = 0,
+        var func = incCase ? "" : "var PRINT='';", 
+            match, code, key, tmp, pos = 0, print, c = 0,
             regExp = new RegExp(parseElems.r, "g");
         
         while((match = regExp.exec(templateStr)) && c < 1e4)
@@ -80,7 +111,7 @@ var Template = (function()
 
             key = "";
             code = match[1];
-            tmp = code.indexOf(":");
+            tmp = indexOf(code, ":");
 
             if(tmp > -1)
             {
@@ -88,44 +119,41 @@ var Template = (function()
                 code = _STR_TRIM(code.substring(tmp+1));
             }
 
-            if(keywords.indexOf(code) > -1)
+            if(indexOf(keywords, code) > -1)
             {
                 key = code;
                 code = "";
             }
 
-            if(match[0].substr(0,2) == "</")
-                key = "/"+key;
-
             key = key.toLowerCase();
-
-            if(key == "") func += "PRINT+="+code+";"+protectComments;
-            else if(controls.js.indexOf(key) > -1) func += code+protectComments;
-            else if(controls.if.indexOf(key) > -1) func += "if("+code+protectComments+"){";
-            else if(controls.else.indexOf(key) > -1) func += "}else{";
-            else if(controls.elseif.indexOf(key) > -1) func += "}else if("+code+protectComments+"){";
-            else if(controls.for.indexOf(key) > -1)
+            
+            if(match[0].substr(0,2) == "</") func += "}";
+            else if(key == "") func += "PRINT+="+code+";"+parseElems.c;
+            else if(isControll("js", key)) func += code+parseElems.c;
+            else if(isControll("if", key)) func += "if("+code+parseElems.c+"){";
+            else if(isControll("else", key)) func += "}else{";
+            else if(isControll("elseif", key)) func += "}else if("+code+parseElems.c+"){";
+            else if(isControll("for", key))
             {
-                tmp = {i:code.indexOf("=>")};
+                tmp = {i:indexOf(code, "=>")};
 
-                if(tmp.i < 0) func += "for("+code+protectComments+"){";
+                if(tmp.i < 0) func += "for("+code+parseElems.c+"){";
                 else
                 {
                     tmp.o = code.substring(0, tmp.i);
                     tmp.k = code.substring(tmp.i+2).split(",");
 
-                    func += "for(var _$i in "+_STR_TRIM(tmp.o)+protectComments+"){";
-                    if(tmp.k.length == 1) func += "var " + _STR_TRIM(tmp.k[0]) + protectComments
-                                                  + "=" + _STR_TRIM(tmp.o) + protectComments + "[_$i];";
+                    func += "for(var _$i in "+_STR_TRIM(tmp.o)+parseElems.c+"){";
+                    if(tmp.k.length == 1) func += "var " + _STR_TRIM(tmp.k[0]) + parseElems.c
+                                                  + "=" + _STR_TRIM(tmp.o) + parseElems.c + "[_$i];";
                                           
-                    else                  func += "var " + _STR_TRIM(tmp.k[1]) + protectComments
-                                                  + "=" + _STR_TRIM(tmp.o) + protectComments + "[_$i], "
-                                                  + _STR_TRIM(tmp.k[0]) + protectComments + "=_$i;";
+                    else                  func += "var " + _STR_TRIM(tmp.k[1]) + parseElems.c
+                                                  + "=" + _STR_TRIM(tmp.o) + parseElems.c + "[_$i], "
+                                                  + _STR_TRIM(tmp.k[0]) + parseElems.c + "=_$i;";
                 }
             }
-            else if(controls.while.indexOf(key) > -1) func += "while("+code+protectComments+"){";
-            else if(controls.imp.indexOf(key) > -1) func += tmplList[code] ? crFunction(tmplList[code].t, true) : "";
-            else if(key.charAt(0) == "/") func += "}";
+            else if(isControll("while", key)) func += "while("+code+parseElems.c+"){";
+            else if(isControll("imp", key)) func += tmplList[code] ? crFunction(tmplList[code].t, true) : "";
             
             c++;
         }
@@ -144,7 +172,7 @@ var Template = (function()
         }
         vars = vars||{};
         
-        var templateObj = tmplList[templateName||""], params, func;
+        var templateObj = tmplList[templateName||""], params;
         
         if(!templateObj) return "";
         
@@ -160,7 +188,7 @@ var Template = (function()
     
     _tmpl.addTemplate = function(name, str){ addTemplate(name, str); return _tmpl; };
     _tmpl.readTemplate = function(str){ readTemplateString(str); return _tmpl; };
-    _tmpl.parse = function(tName, vars){ return parseTemplate(tName, vars); };
+    _tmpl.parse = function(name, vars){ return parseTemplate(name, vars); };
     _tmpl.render = _tmpl.parse;
     return _tmpl;
 })();
