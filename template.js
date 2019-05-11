@@ -1,5 +1,5 @@
 /**
- * Template - a simple js templating handler 
+ * Template - a simple js templating engine
  * 
  * @version 1.0
  * @author m13p4
@@ -11,13 +11,11 @@ var Template = (function()
     
     var 
     _tmpl = {},
-    parseElems = {
-        p: (/<\/?\s*\{/).source,  //prefix
-        s: (/\}\s*\/?>/).source,  //suffix
-        i: (/[\s\S]*?/).source,   //infix
+    parse_prefix = "<\\/?\\s*\\{",
+    parse_suffix = "\\}\\s*\\/?>",
+    parse_infix  = "[\\s\\S]*?",
+    parse_protect_comment = "//*/\n",
         
-        c: "//*/\n" // protect comment
-    },
     controls = {
         tmpl:   ["tmpl", "template"],
         if:     ["if"],
@@ -36,15 +34,14 @@ var Template = (function()
     tmplList = {},
     _STR_TRIM = new Function("s", "return "+(String.prototype.trim ? "s.trim()" : "s.replace(/^[\\s\\uFEFF\\xA0]+|[\\s\\uFEFF\\xA0]+$/g,'')")+";");
     
-    parseElems.r = parseElems.p + "(" + parseElems.i + ")" + parseElems.s; //parse RegExp string
     function addTemplate(name, str){ tmplList[name] = {t:str}; }
     function isControll(cntrlKey, key){ return controls[cntrlKey].indexOf(key) > -1; }
     function getPrintVarName(){ return "_" + Math.floor(1e6 + Math.random()*(1e6 - 1e5)); }
     
     function readTemplateString(str)
     {
-        var regExp = new RegExp(parseElems.p + "\\s*(" + controls.tmpl.join("|")
-                     + ")\\s*:?\\s*(" + parseElems.i + ")" + parseElems.s, "gi"),
+        var regExp = new RegExp(parse_prefix + "\\s*(" + controls.tmpl.join("|")
+                     + ")\\s*:?\\s*(" + parse_infix + ")" + parse_suffix, "gi"),
             c = 0, key, beginPos, beginTag, tmplName, match;
         
         typeof str !== "string" 
@@ -76,7 +73,7 @@ var Template = (function()
             func = incCase ? "" : "var "+printVarName+"='',"+
                                   "print=function(s){"+printVarName+"+=s;},PRINT=print;\n", 
             match, code, key, tmp, pos = 0, print, c = 0,
-            regExp = new RegExp(parseElems.r, "g");
+            regExp = new RegExp(parse_prefix + "(" + parse_infix + ")" + parse_suffix, "g");
         
         while((match = regExp.exec(templateStr)) && c < 1e4)
         {
@@ -102,30 +99,30 @@ var Template = (function()
             key = key.toLowerCase();
             
             if(match[0].substr(0,2) == "</") func += "}";
-            else if(key == "") func += printVarName+"+="+code+";"+parseElems.c;
-            else if(isControll("js", key)) func += code+parseElems.c;
-            else if(isControll("if", key)) func += "if("+code+parseElems.c+"){";
+            else if(key == "") func += printVarName+"+="+code+";"+parse_protect_comment;
+            else if(isControll("js", key)) func += code+parse_protect_comment;
+            else if(isControll("if", key)) func += "if("+code+parse_protect_comment+"){";
             else if(isControll("else", key)) func += "}else{";
-            else if(isControll("elseif", key)) func += "}else if("+code+parseElems.c+"){";
+            else if(isControll("elseif", key)) func += "}else if("+code+parse_protect_comment+"){";
             else if(isControll("for", key))
             {
                 tmp = {i:code.indexOf("=>")};
-                if(tmp.i < 0) func += "for("+code+parseElems.c+"){";
+                if(tmp.i < 0) func += "for("+code+parse_protect_comment+"){";
                 else
                 {
                     tmp.o = code.substring(0, tmp.i);
                     tmp.k = code.substring(tmp.i+2).split(",");
                     tmp.v = getPrintVarName();
 
-                    func += "for(var "+tmp.v+" in "+_STR_TRIM(tmp.o)+parseElems.c+"){";
-                    if(tmp.k.length == 1) func += "var " + _STR_TRIM(tmp.k[0]) + parseElems.c
-                                                  + "=" + _STR_TRIM(tmp.o) + parseElems.c + "["+tmp.v+"];";
-                    else                  func += "var " + _STR_TRIM(tmp.k[1]) + parseElems.c
-                                                  + "=" + _STR_TRIM(tmp.o) + parseElems.c + "["+tmp.v+"], "
-                                                  + _STR_TRIM(tmp.k[0]) + parseElems.c + "="+tmp.v+";";
+                    func += "for(var "+tmp.v+" in "+_STR_TRIM(tmp.o)+parse_protect_comment+"){";
+                    if(tmp.k.length == 1) func += "var " + _STR_TRIM(tmp.k[0]) + parse_protect_comment
+                                                  + "=" + _STR_TRIM(tmp.o) + parse_protect_comment + "["+tmp.v+"];";
+                    else                  func += "var " + _STR_TRIM(tmp.k[1]) + parse_protect_comment
+                                                  + "=" + _STR_TRIM(tmp.o) + parse_protect_comment + "["+tmp.v+"], "
+                                                  + _STR_TRIM(tmp.k[0]) + parse_protect_comment + "="+tmp.v+";";
                 }
             }
-            else if(isControll("while", key)) func += "while("+code+parseElems.c+"){";
+            else if(isControll("while", key)) func += "while("+code+parse_protect_comment+"){";
             else if(isControll("imp", key)) func += tmplList[code] ? crFunction(tmplList[code].t, printVarName) : "";
             
             c++;
