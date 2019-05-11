@@ -12,18 +12,14 @@ var Template = (function()
     var 
     _tmpl = {},
     parseElems = {
-        p: "<{",  //prefix
-        s: "}>",  //suffix
+        p: (/<\/?\s*\{/).source,  //prefix
+        s: (/\}\s*\/?>/).source,  //suffix
+        i: (/[\s\S]*?/).source,   //infix
         
-        cp: "</{", //close prefix
-        cs: "}/>", //close suffix
-        
-        r: (/<\/?\s*\{([\s\S]*?)\}\s*\/?>/).source, //search regex
         c: "//*/\n" // protect comment
     },
     controls = {
         tmpl:   ["tmpl", "template"],
-        
         if:     ["if"],
         else:   ["else"],
         elseif: ["elseif", "else if"],
@@ -32,74 +28,53 @@ var Template = (function()
         imp:    ["imp", "import", "inc", "include", "req", "require"],
         js:     ["js", "code"]
     },
-    keywords  = (function()
-                {
-                    var res=[], i;
+    keywords =  (function()
+                {   var res=[], i;
                     for(i in controls)
                         res = res.concat(controls[i]);
-                    return res;
-                })(),
+                    return res;})(),
     tmplList = {},
     _STR_TRIM = new Function("s", "return "+(String.prototype.trim ? "s.trim()" : "s.replace(/^[\\s\\uFEFF\\xA0]+|[\\s\\uFEFF\\xA0]+$/g,'')")+";");
     
-    function addTemplate(name, str)
-    {
-        tmplList[name] = {t:str};
-    }
-    
-    function indexOf(arrOrStr, toSearch, pos)
-    {
-        pos = pos||0;
-        toSearch = toSearch instanceof Array ? toSearch : [toSearch];
-
-        var fnd, res = -1, i = 0;
-        for(;i < toSearch.length; i++)
-            fnd = arrOrStr.indexOf(toSearch[i], pos),
-            res = (fnd > -1 && (fnd < res || res == -1)) ? fnd : res;
-        
-        return res;
-    }
+    parseElems.r = parseElems.p + "(" + parseElems.i + ")" + parseElems.s; //parse RegExp string
+    function addTemplate(name, str){ tmplList[name] = {t:str}; }
+    function isControll(cntrlKey, key){ return controls[cntrlKey].indexOf(key) > -1; }
+    function getPrintVarName(){ return "_" + Math.floor(1e6 + Math.random()*(1e6 - 1e5)); }
     
     function readTemplateString(str)
     {
-        var keys = {
-            o: [],  //open
-            c: []   //close
-        }, tmplCntrl = controls.tmpl, pos = 0, c = 0, 
-        key, begin, end, beginTag, name, closeTagPos, tmplStr;
-        for(var i = 0; i < tmplCntrl.length; i++)
-            keys.o.push(parseElems.p + tmplCntrl[i]),
-            keys.c.push(parseElems.cp + tmplCntrl[i]);
+        var regExp = new RegExp(parseElems.p + "\\s*(" + controls.tmpl.join("|")
+                     + ")\\s*:?\\s*(" + parseElems.i + ")" + parseElems.s, "gi"),
+            c = 0, key, beginPos, beginTag, tmplName, match;
         
-        while((begin = indexOf(str, keys.o, pos)) > -1 && c < 1e3)
+        typeof str !== "string" 
+            && typeof Buffer === "function" 
+            && Buffer.isBuffer(str) 
+            && (str = str.toString());
+        if((key = typeof str) !== "string") 
+            throw 'need a "string", "'+key+'" was given.';
+        
+        while((match = regExp.exec(str)) && c < 1e3)
         {
-            key = false;
-            for(i = 0; i < keys.o.length; i++)
-                if(str.substr(begin, keys.o[i].length) === keys.o[i])
-                {
-                    key = tmplCntrl[i];
-                    break;
-                }
-            key && (end     = indexOf(str, parseElems.s, begin))                      && end > -1 
-            && (closeTagPos = indexOf(str, keys.c, end))                              && closeTagPos > -1
-            && (beginTag    = str.substring(begin + parseElems.p.length, end))
-            && (tmplStr     = str.substring(end + parseElems.s.length, closeTagPos))
-            && (name        = _STR_TRIM(beginTag.substr(key.length+1)) || "")
-            ;
-            tmplStr && addTemplate(name, tmplStr); // (tmplList[name] = tmplStr);
-            pos = closeTagPos + parseElems.cp.length + key.length + parseElems.s.length;
+            key = match[0];
+            
+            if(key.substr(0, 2) === "</")
+                addTemplate(tmplName, str.substring(beginPos + beginTag.length, match.index));
+            else
+            {
+                tmplName = _STR_TRIM(match[2]);
+                beginTag = key;
+                beginPos = match.index;
+            }
             c++;
         }
     }
     
-    function isControll(cntrlKey, key)
-    {
-        return indexOf(controls[cntrlKey], key) > -1;
-    }
-    
     function crFunction(templateStr, incCase)
     {
-        var func = incCase ? "" : "var PRINT='';", 
+        var printVarName = incCase || getPrintVarName(),
+            func = incCase ? "" : "var "+printVarName+"='',"+
+                                  "print=function(s){"+printVarName+"+=s;},PRINT=print;\n", 
             match, code, key, tmp, pos = 0, print, c = 0,
             regExp = new RegExp(parseElems.r, "g");
         
@@ -107,58 +82,56 @@ var Template = (function()
         {
             print = templateStr.substring(pos, match.index);
             pos   = match.index + match[0].length;
-            func += "PRINT +="+JSON.stringify(print)+";";
+            func += printVarName + "+=" + JSON.stringify(print) + ";";
 
             key = "";
             code = match[1];
-            tmp = indexOf(code, ":");
+            tmp = code.indexOf(":");
 
             if(tmp > -1)
             {
                 key = _STR_TRIM(code.substring(0, tmp));
                 code = _STR_TRIM(code.substring(tmp+1));
             }
-
-            if(indexOf(keywords, code) > -1)
+            
+            if(keywords.indexOf(code) > -1)
             {
                 key = code;
                 code = "";
             }
-
             key = key.toLowerCase();
             
             if(match[0].substr(0,2) == "</") func += "}";
-            else if(key == "") func += "PRINT+="+code+";"+parseElems.c;
+            else if(key == "") func += printVarName+"+="+code+";"+parseElems.c;
             else if(isControll("js", key)) func += code+parseElems.c;
             else if(isControll("if", key)) func += "if("+code+parseElems.c+"){";
             else if(isControll("else", key)) func += "}else{";
             else if(isControll("elseif", key)) func += "}else if("+code+parseElems.c+"){";
             else if(isControll("for", key))
             {
-                tmp = {i:indexOf(code, "=>")};
-
+                tmp = {i:code.indexOf("=>")};
                 if(tmp.i < 0) func += "for("+code+parseElems.c+"){";
                 else
                 {
                     tmp.o = code.substring(0, tmp.i);
                     tmp.k = code.substring(tmp.i+2).split(",");
+                    tmp.v = getPrintVarName();
 
-                    func += "for(var _$i in "+_STR_TRIM(tmp.o)+parseElems.c+"){";
+                    func += "for(var "+tmp.v+" in "+_STR_TRIM(tmp.o)+parseElems.c+"){";
                     if(tmp.k.length == 1) func += "var " + _STR_TRIM(tmp.k[0]) + parseElems.c
-                                                  + "=" + _STR_TRIM(tmp.o) + parseElems.c + "[_$i];";
-                                          
+                                                  + "=" + _STR_TRIM(tmp.o) + parseElems.c + "["+tmp.v+"];";
                     else                  func += "var " + _STR_TRIM(tmp.k[1]) + parseElems.c
-                                                  + "=" + _STR_TRIM(tmp.o) + parseElems.c + "[_$i], "
-                                                  + _STR_TRIM(tmp.k[0]) + parseElems.c + "=_$i;";
+                                                  + "=" + _STR_TRIM(tmp.o) + parseElems.c + "["+tmp.v+"], "
+                                                  + _STR_TRIM(tmp.k[0]) + parseElems.c + "="+tmp.v+";";
                 }
             }
             else if(isControll("while", key)) func += "while("+code+parseElems.c+"){";
-            else if(isControll("imp", key)) func += tmplList[code] ? crFunction(tmplList[code].t, true) : "";
+            else if(isControll("imp", key)) func += tmplList[code] ? crFunction(tmplList[code].t, printVarName) : "";
             
             c++;
         }
-        func += "PRINT+="+JSON.stringify(templateStr.substring(pos))+";"
-                + (incCase ? "" : " return PRINT;");
+        func += printVarName+"+="+JSON.stringify(templateStr.substring(pos))+";"
+                + (incCase ? "" : " return "+printVarName+";");
         
         return func;
     }
@@ -192,3 +165,6 @@ var Template = (function()
     _tmpl.render = _tmpl.parse;
     return _tmpl;
 })();
+
+if(typeof module === "object")
+    module.exports = Template;
