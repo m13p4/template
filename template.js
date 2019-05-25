@@ -4,42 +4,36 @@
  * @version 1.0
  * @author m13p4
  * @copyright Meliantchenkov Pavel
- * @license https://github.com/m13p4/template/blob/master/LICENSE
+ * @license MIT https://github.com/m13p4/template/blob/master/LICENSE
  */
 var Template = (function()
 { 'use strict';
     
     var 
-    _tmpl = {},
     parse_prefix = "<\\/?\\s*\\{",
     parse_suffix = "\\}\\s*\\/?>",
     parse_infix  = "[\\s\\S]*?",
     parse_protect_comment = "//*/\n",
     
     parse_keywords_tmpl = /tmpl|template/,
-    parse_keywords_inj  = /if|else|else\s*if|for|while/,
     parse_keywords_js   = /js|code/,
+    parse_keywords_inj  = /if|else(\s*if)?|for|while/,
     parse_keywords_imp  = /imp(ort)?|inc(lude)?|req(uire)?/,
-    parse_keywords = new RegExp("^" + [ parse_keywords_inj.source,
-                                        parse_keywords_js.source,
-                                        parse_keywords_imp.source
-                                      ].join("|")+"$"),
+    parse_keywords = new RegExp("^" + parse_keywords_js.source  + "|"
+                                    + parse_keywords_inj.source + "|"
+                                    + parse_keywords_imp.source + "$");
     
-    tmplList = {};
+    function randVarName(prefix){ return (prefix||"p") + Math.floor(Math.random() * 1e6); }
+    function addTemplate(list, name, str){ list[name] = {t:str}; }
     
-    function _STR_TRIM(s){ return s.trim(); }
-    function addTemplate(name, str){ tmplList[name] = {t:str}; }
-    function getPrintVarName(){ return "p" + Math.floor(Math.random() * 1e6); }
-    
-    function readTemplateString(str)
+    function parseTemplateString(list, str)
     {
         var regExp = new RegExp(parse_prefix + "\\s*(" + parse_keywords_tmpl.source
                      + ")\\s*:?\\s*(" + parse_infix + ")" + parse_suffix, "gi"),
             c = 0, key, beginPos, beginTag, tmplName, match;
         
         typeof str != "string" 
-            && typeof Buffer == "function" 
-            && Buffer.isBuffer(str) 
+            && str.toString
             && (str = str.toString());
         if((key = typeof str) != "string") 
             throw 'need a "string", "'+key+'" was given.';
@@ -49,37 +43,36 @@ var Template = (function()
             key = match[0];
             
             if(key.substr(0, 2) == "</")
-                addTemplate(tmplName, str.substring(beginPos + beginTag.length, match.index));
+                addTemplate(list, tmplName, str.substring(beginPos + beginTag.length, match.index));
             else
             {
-                tmplName = _STR_TRIM(match[2]);
+                tmplName = match[2].trim();
                 beginTag = key;
                 beginPos = match.index;
             }
         }
     }
     
-    function parseFunction(templateStr, incCase)
+    function parseFunction(list, templateStr, incCase)
     {
-        var printVarName = incCase || getPrintVarName(),
-            bodyStr = incCase ? "" : "var " + printVarName + "=''," +
+        var printVarName = incCase || randVarName(),
+            bodyStr = incCase ? "" : "'use strict';var " + printVarName + "=''," +
                                      "print=function(s){" + printVarName + "+=s;};\n", 
-            match, code, key, tmp, pos = 0, print, c = 0,
+            match, code, key, tmp, pos = 0, c = 0,
             regExp = new RegExp(parse_prefix + "(" + parse_infix + ")" + parse_suffix, "g");
         
         while((match = regExp.exec(templateStr)) && c++ < 1e4)
         {
-            print = templateStr.substring(pos, match.index);
-            pos   = match.index + match[0].length;
-            bodyStr += printVarName + "+=" + JSON.stringify(print) + ";";
+            bodyStr += printVarName + "+=" + JSON.stringify(templateStr.substring(pos, match.index)) + ";";
 
             key  = "";
-            code = _STR_TRIM(match[1]);
+            code = match[1].trim();
+            pos  = match.index + match[0].length;
             
             if((tmp = code.indexOf(":")) > -1)
             {
-                key = _STR_TRIM(code.substr(0, tmp));
-                code = _STR_TRIM(code.substr(tmp + 1));
+                key = code.substr(0, tmp).trim();
+                code = code.substr(tmp + 1).trim();
             }
             else if(parse_keywords.test(code.toLowerCase()))
             {
@@ -97,36 +90,35 @@ var Template = (function()
                 {
                     if(key == "for" && (tmp = code.indexOf("=>")) > -1)
                     {
-                        key  = _STR_TRIM(code.substr(0, tmp));
+                        key  = code.substr(0, tmp).trim();
                         code = code.substr(tmp + 2).split(",", 2);
-                        tmp  = getPrintVarName();
+                        tmp  = randVarName("i");
                         
                         bodyStr += " var " + code.join(parse_protect_comment+",") + parse_protect_comment
-                                   + "for(var " + tmp + " in " + key + parse_protect_comment + "){ ";
-                          
+                                   + "for(var " + tmp + " in " + key + parse_protect_comment + "){";
+                        
                         if(code.length == 1)  bodyStr += code[0] + parse_protect_comment
                                                       + "=" + key + parse_protect_comment + "["+tmp+"];";
                                               
                         else                  bodyStr += code[1] + parse_protect_comment
-                                                      + "=" + key + parse_protect_comment + "["+tmp+"]; "
+                                                      + "=" + key + parse_protect_comment + "["+tmp+"];"
                                                       + code[0] + parse_protect_comment + "="+tmp+";";
-                        
                     }
                     else if(key == "else") bodyStr += "}else{";
                     else bodyStr += (key.indexOf("else") == 0 ? "}" : "") 
                                  + key + "(" + code + parse_protect_comment + "){";
                 }
                 else if(parse_keywords_js.test(key))  bodyStr += code + parse_protect_comment;
-                else if(parse_keywords_imp.test(key)) bodyStr += tmplList[code] ? parseFunction(tmplList[code].t, printVarName) : "";
+                else if(parse_keywords_imp.test(key)) bodyStr += list[code] ? parseFunction(list, list[code].t, printVarName) : "";
             }
         }
-        bodyStr += printVarName+"+="+JSON.stringify(templateStr.substring(pos))+";"
+        bodyStr += printVarName+"+="+JSON.stringify(templateStr.substr(pos))+";"
                 + (incCase ? "" : " return "+printVarName+";");
         
         return bodyStr;
     }
     
-    function renderTemplate(templateName, vars)
+    function renderTemplate(list, templateName, vars)
     {
         if(typeof templateName == "object")
         {
@@ -135,12 +127,12 @@ var Template = (function()
         }
         vars = vars||{};
         
-        var templateObj = tmplList[templateName||""], params;
+        var templateObj = list[templateName||""], params;
         
         if(!templateObj) return "";
         
         if(!templateObj.f) 
-            templateObj.f = parseFunction(templateObj.t);
+            templateObj.f = parseFunction(list, templateObj.t);
         
         params = [null].concat(Object.keys(vars));
         params.push(templateObj.f);
@@ -149,11 +141,26 @@ var Template = (function()
                         .apply(null, Object.values(vars));
     }
     
-    _tmpl.addTemplate = function(name, str){ addTemplate(name, str); return _tmpl; };
-    _tmpl.readTemplate = function(str){ readTemplateString(str); return _tmpl; };
-    _tmpl.parse = function(name, vars){ return renderTemplate(name, vars); };
-    _tmpl.render = _tmpl.parse;
-    return _tmpl;
+    function getTemplate()
+    {
+        var 
+        list = {},
+        tmpl = function(str)
+        {
+            if(this && this.constructor === tmpl)
+                return (getTemplate())(str);
+            
+            str && parseTemplateString(list, str); 
+            return tmpl;
+        };
+        
+        tmpl.render = function(name, vars){ return renderTemplate(list, name, vars); };
+        tmpl.parse  = function(str){ return tmpl(str); };
+        tmpl.add    = function(name, str){ addTemplate(list, name, str); return tmpl; };
+        return tmpl;
+    }
+    
+    return getTemplate();
 })();
 
 if(typeof module == "object")
