@@ -11,9 +11,9 @@ To use Template you must import the code into your project. You can get the code
 <!-- normal-->
 <script type="text/javascript" src="./path/to/template/template.js"></script>
 
-<!-- or minified --
+<!-- or minified 
 <script type="text/javascript" src="./path/to/template/template.min.js"></script>
-<!-- -->
+-->
 ```
 
 #### Node.JS (server side)
