@@ -11,10 +11,12 @@
                         // plain js code here
                         var a = 2,
                             b = 3,
-                            c = 7;
+                            c = 7, neVar = "foo bar";
 
                         for(var i = 0; i < 20; i++)
-                            PRINT += (i*a*b*c) + "<br />";
+                            print((i*a*b*c) + "<br />");
+        
+                        //console.log("console.log");
                         
                     }/>
                     <div>
@@ -28,12 +30,12 @@
                             count: <{i}> <br />
                         </{for}>
 
-                        <{js: arr = [2,4,6,8,"..."];}/>
+                        <{js: var arr = [2,4,6,8,"..."];}/>
                         <{for: i in arr}>
                             elem: <{arr[i]}> <br />
                         </{for}>
 
-                        <{js: objOrArr = [2,3,5,7, 11, 13, 17, 18, 21,"..."];}/>
+                        <{js: var objOrArr = [2,3,5,7, 11, 13, 17, 18, 21,"..."];}/>
                         <{for: objOrArr => key, val}>
                             zeile: <{inc: zeile}>
                         </{for}>
@@ -44,7 +46,7 @@
                 kann auch für kommentare benutzt werden ..
 
                 <{tmpl: zeile}>
-                    <{js:
+                    <{js: var
                         bla = "ein bla string",
                         rnd = Math.random();
                     }>
@@ -59,15 +61,18 @@
         </script>
         <script src="./js/template.js" type="text/javascript"></script>
         <script type="text/javascript">
-            Template.readTemplate(document.getElementById("template").innerHTML);
-            
-            var parsed = Template.parse({neVar: "hallo welt"});
-            console.log(parsed);
-
-            window.addEventListener("load", function()
+            !function()
             {
-                document.body.innerHTML = parsed;
-            });
+                var tmpl = new Template(document.getElementById("template").innerHTML),
+                    parsed = tmpl.render(); //{neVar: "hallo welt"});
+
+                console.log(tmpl, parsed);
+
+                window.addEventListener("load", function()
+                {
+                    document.body.innerHTML = parsed;
+                });
+            }();
         </script>
     </head>
     <body>
