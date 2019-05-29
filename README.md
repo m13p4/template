@@ -1,5 +1,5 @@
 # Template
-Template is a simple, in JavaScript writen, templating engin.
+Template is a simple, in JavaScript written, templating engine.
 
 ## How to use
 
@@ -21,7 +21,7 @@ To use Template you must import the code into your project. You can get the code
 var Template = require('./path/to/template/template.js');
 ```
 
-After the import, the global object can be used or a new instance, for example in a closed named space, could be used
+After import, the global object can be used or a new instance, for example in a closed named space, could be used
 ```javascript
 (function(){
     var tmpl = new Template();
@@ -38,7 +38,7 @@ fs.readFile(reqFilePath, (err, data) => {
 ```
 
 ### Render Template
-During rendering, the templates are addressed via the name defined in the template. if no name is passed, the template is addressed without a defined name.
+During rendering, the templates are addressed by the name defined in the template. if no name is passed, the template is addressed without a defined name.
 ```html
 <script type="text/html" id="template">
     <{tmpl}>
